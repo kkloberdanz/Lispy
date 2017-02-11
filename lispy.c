@@ -16,6 +16,17 @@
 #define VERSION   0.8
 #define BUFF_SIZE 2048
 
+mpc_parser_t* Number;
+mpc_parser_t* Decimal;
+mpc_parser_t* Operator;
+mpc_parser_t* Expr;
+mpc_parser_t* Lispy;
+
+typedef struct {
+    char* name;
+    FILE* file;
+} file_t;
+
 /* lisp value */
 typedef struct {
     int type;
@@ -50,6 +61,7 @@ lval lval_num(long x) {
     return v;
 }
 
+/* double type (decimal type) */
 lval lval_dbl(double x) {
     lval v;
     v.type = LVAL_DBL;
@@ -65,44 +77,45 @@ lval lval_err(int x) {
     return v;
 }
 
-void lval_print(lval v) {
+/* display output to file */
+void lval_print(FILE* file, FILE* error, lval v) {
     switch (v.type) {
         case LVAL_NUM:
-            printf("%li", v.num);
+            fprintf(file, "%li", v.num);
             break;
 
         case LVAL_ERR:
             switch (v.err) {
                 case LERR_DIV_ZERO:
-                    printf("error: Division by Zero");
+                    fprintf(error, "error: Division by Zero");
                     break;
 
                 case LERR_BAD_OP:
-                    printf("error: Invalid Operator");
+                    fprintf(error, "error: Invalid Operator");
                     break;
 
                 case LERR_BAD_NUM:
-                    printf("error: Invalid Number");
+                    fprintf(error, "error: Invalid Number");
                     break;
 
                 case LERR_MISMATCHED_TYPES:
-                    printf("error: Missmatched Types");
+                    fprintf(error, "error: Missmatched Types");
                     break; 
 
                 case OP_INCOMPAT_TYPE:
-                    printf("error: Types incompatable with operator");
+                    fprintf(error, "error: Types incompatable with operator");
                     break; 
             }
             break;
 
         case LVAL_DBL:
-            printf("%lf", v.dbl);
+            fprintf(file, "%lf", v.dbl);
             break;
     }
 }
 
 void lval_println(lval v) {
-    lval_print(v);
+    lval_print(stdout, stderr, v);
     putchar('\n');
 }
 
@@ -202,8 +215,9 @@ lval eval(mpc_ast_t* t) {
     }
 
     if (strstr(t->tag, "decimal")) {
-        double x = atof(t->contents);
-        return lval_dbl(x);
+        errno = 0;
+        double x = strtod(t->contents, NULL);
+        return errno != ERANGE ? lval_dbl(x) : lval_err(LERR_BAD_NUM);
     }
 
     /* the operator is always the second child */
@@ -219,14 +233,66 @@ lval eval(mpc_ast_t* t) {
     return x;
 }
 
-int main(int argc, char** argv) {
+int display_greeting() {
+    printf("lispy version: %.2f\n", VERSION);
+    printf("License: GPLv3 (see https://www.gnu.org/licenses/gpl-3.0.txt)\n");
+#ifdef __GNUC__
+    printf("GCC: %d.%d.%d\n", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+#endif
+    printf("CTRL-C to exit\n");
 
-    /* Create Some Parsers */
-    mpc_parser_t* Number   = mpc_new("number");
-    mpc_parser_t* Decimal  = mpc_new("decimal");
-    mpc_parser_t* Operator = mpc_new("operator");
-    mpc_parser_t* Expr     = mpc_new("expr");
-    mpc_parser_t* Lispy    = mpc_new("lispy");
+    return 0;
+}
+
+int parse_and_interpret(char* input) { 
+    mpc_result_t r;
+    if (mpc_parse("<stdin>", input, Lispy, &r)) {
+
+        lval result = eval(r.output);
+        lval_println(result);
+
+#ifdef DEBUG
+        /* On Success Print the AST */
+        mpc_ast_print(r.output);
+#endif
+        mpc_ast_delete(r.output);
+    } else {
+        /* Otherwise Print the Error */
+        mpc_err_print(r.error);
+        mpc_err_delete(r.error);
+    }
+}
+
+int shell() {
+    int reti = display_greeting();
+    char* input;
+    while (1) {
+        input = readline("[lispy]> ");
+        add_history(input);
+        if (strcmp("q", input) == 0) {
+            break;
+        }
+
+        parse_and_interpret(input);
+
+        free(input);
+    }
+    free(input);
+    return 0;
+}
+
+int fromfile(char* filename) {
+    printf("lispy: Reading from file %s\n", filename);
+    return 0;
+}
+
+int run(int argc, char** argv) {
+    /* Global parsers */
+    Number   = mpc_new("number");
+    Decimal  = mpc_new("decimal");
+    Operator = mpc_new("operator");
+    Expr     = mpc_new("expr");
+    Lispy    = mpc_new("lispy");
 
     /* Define them with the following Language */
     mpca_lang(MPCA_LANG_DEFAULT,
@@ -239,37 +305,20 @@ int main(int argc, char** argv) {
       ",
         Number, Decimal, Operator, Expr, Lispy);
 
-    printf("lispy version: %.2f\n", VERSION);
-    printf("License: GPLv3 (see https://www.gnu.org/licenses/gpl-3.0.txt)\n");
-#ifdef __GNUC__
-    printf("GCC: %d.%d.%d\n", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
-#endif
-    printf("CTRL-C to exit\n");
+    int reti;
 
-    while (1) {
-        char* input = readline("[lispy]> ");
-        add_history(input);
-
-        mpc_result_t r;
-        if (mpc_parse("<stdin>", input, Lispy, &r)) {
-
-            lval result = eval(r.output);
-            lval_println(result);
-            mpc_ast_delete(r.output);
-
-#ifdef DEBUG
-            /* On Success Print the AST */
-            mpc_ast_print(r.output);
-            mpc_ast_delete(r.output);
-#endif
-        } else {
-            /* Otherwise Print the Error */
-            mpc_err_print(r.error);
-            mpc_err_delete(r.error);
-        }
-        free(input);
+    printf("argc = %d\n", argc);
+    if (argc == 2) {
+        reti = fromfile(argv[1]);
+    } else {
+        reti = shell();
     }
-    return 0;
+
+    return reti;
+}
+
+int main(int argc, char** argv) {
+    int reti = run(argc, argv);
 
     /* Undefine and Delete our Parsers */
     mpc_cleanup(5, Number, Decimal, Operator, Expr, Lispy);

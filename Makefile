@@ -1,7 +1,8 @@
 all:
-	gcc lispy.c mpc.c -o lispy -ledit -std=c99 -lm
+	gcc lispy.c mpc.c -o lispy -ledit -std=c99 -lm -O2
 
-parsing:
-	gcc -std=c99 -Wall parsing.c mpc.c -ledit -lm -o parsing
+debug:
+	gcc lispy.c mpc.c -o lispy -ledit -std=c99 -lm -DDEBUG -O0
+
 clean:
 	rm lispy
