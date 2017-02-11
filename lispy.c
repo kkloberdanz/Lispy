@@ -18,31 +18,42 @@
 
 /* lisp value */
 typedef struct {
-    int  type;
+    int type;
     union {
-        long num;
-        int  err;
+        long   num;
+        int    err;
+        double dbl;
     };
 } lval;
 
 /* lval types */
-enum {
+typedef enum {
     LVAL_NUM,
-    LVAL_ERR
-};
+    LVAL_ERR,
+    LVAL_DBL
+} LVAL_TYPE;
 
 /* error types */
-enum {
+typedef enum {
     LERR_DIV_ZERO,
     LERR_BAD_OP,
-    LERR_BAD_NUM
-};
+    LERR_BAD_NUM,
+    LERR_MISMATCHED_TYPES,
+    OP_INCOMPAT_TYPE
+} LERR;
 
 /* number type lval */
 lval lval_num(long x) {
     lval v;
     v.type = LVAL_NUM;
     v.num = x;
+    return v;
+}
+
+lval lval_dbl(double x) {
+    lval v;
+    v.type = LVAL_DBL;
+    v.dbl = x;
     return v;
 }
 
@@ -73,7 +84,19 @@ void lval_print(lval v) {
                 case LERR_BAD_NUM:
                     printf("error: Invalid Number");
                     break;
+
+                case LERR_MISMATCHED_TYPES:
+                    printf("error: Missmatched Types");
+                    break; 
+
+                case OP_INCOMPAT_TYPE:
+                    printf("error: Types incompatable with operator");
+                    break; 
             }
+            break;
+
+        case LVAL_DBL:
+            printf("%lf", v.dbl);
             break;
     }
 }
@@ -98,23 +121,74 @@ int number_of_nodes(mpc_ast_t* t) {
     return 0;
 }
 
+/* TODO: extend to include double operations */
 lval eval_op(lval x, char* op, lval y) {
 
     if (x.type == LVAL_ERR) { return x; }
     if (y.type == LVAL_ERR) { return y; }
 
-    if (strcmp(op, "+") == 0) { return lval_num(x.num + y.num); }
-    if (strcmp(op, "-") == 0) { return lval_num(x.num - y.num); }
-    if (strcmp(op, "*") == 0) { return lval_num(x.num * y.num); }
-    if (strcmp(op, "/") == 0) { 
-        return y.num == 0 ? lval_err(LERR_DIV_ZERO) : 
-                            lval_num(x.num / y.num);
-    }
-    if (strcmp(op, "%") == 0) { 
-        return y.num == 0 ? lval_err(LERR_DIV_ZERO) : 
-                            lval_num(x.num % y.num);
+    if (strcmp(op, "+") == 0) { 
+        if ((y.type == LVAL_NUM) && (x.type == LVAL_NUM)) {
+            return lval_num(x.num + y.num); 
+        }
+
+        if ((y.type == LVAL_DBL) && (x.type == LVAL_DBL)) {
+            return lval_dbl(x.dbl + y.dbl); 
+        }
+
+        return lval_err(LERR_MISMATCHED_TYPES);
     }
 
+    if (strcmp(op, "-") == 0) { 
+        if ((y.type == LVAL_NUM) && (x.type == LVAL_NUM)) {
+            return lval_num(x.num - y.num); 
+        }
+
+        if ((y.type == LVAL_DBL) && (x.type == LVAL_DBL)) {
+            return lval_dbl(x.dbl - y.dbl); 
+        }
+
+        return lval_err(LERR_MISMATCHED_TYPES);
+    }
+
+    if (strcmp(op, "*") == 0) { 
+        if ((y.type == LVAL_NUM) && (x.type == LVAL_NUM)) {
+            return lval_num(x.num * y.num); 
+        }
+
+        if ((y.type == LVAL_DBL) && (x.type == LVAL_DBL)) {
+            return lval_dbl(x.dbl * y.dbl); 
+        }
+
+        return lval_err(LERR_MISMATCHED_TYPES);
+    }
+
+    if (strcmp(op, "/") == 0) { 
+        if ((y.type == LVAL_NUM) && (x.type == LVAL_NUM)) {
+            return y.num == 0 ? lval_err(LERR_DIV_ZERO) : 
+                                lval_num(x.num / y.num);
+        }
+
+        if ((y.type == LVAL_DBL) && (x.type == LVAL_DBL)) {
+            return y.num == 0.0 ? lval_err(LERR_DIV_ZERO) : 
+                                  lval_dbl(x.dbl / y.dbl);
+        }
+
+        return lval_err(LERR_MISMATCHED_TYPES);
+    }
+
+    if (strcmp(op, "%") == 0) { 
+        if ((y.type == LVAL_NUM) && (x.type == LVAL_NUM)) {
+            return y.num == 0 ? lval_err(LERR_DIV_ZERO) : 
+                                lval_num(x.num % y.num);
+        }
+
+        if ((y.type == LVAL_DBL) && (x.type == LVAL_DBL)) {
+            return lval_err(OP_INCOMPAT_TYPE);
+        }
+
+        return lval_err(LERR_MISMATCHED_TYPES);
+    }
 
     return lval_err(LERR_BAD_OP);
 }
@@ -125,6 +199,11 @@ lval eval(mpc_ast_t* t) {
         errno = 0;
         long x = strtol(t->contents, NULL, 10);
         return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
+    }
+
+    if (strstr(t->tag, "decimal")) {
+        double x = atof(t->contents);
+        return lval_dbl(x);
     }
 
     /* the operator is always the second child */
@@ -144,6 +223,7 @@ int main(int argc, char** argv) {
 
 	/* Create Some Parsers */
 	mpc_parser_t* Number   = mpc_new("number");
+	mpc_parser_t* Decimal  = mpc_new("decimal");
 	mpc_parser_t* Operator = mpc_new("operator");
 	mpc_parser_t* Expr     = mpc_new("expr");
 	mpc_parser_t* Lispy    = mpc_new("lispy");
@@ -152,13 +232,18 @@ int main(int argc, char** argv) {
 	mpca_lang(MPCA_LANG_DEFAULT,
 	  "                                                     \
 		number   : /-?[0-9]+/ ;                             \
+        decimal  : /-?[0-9]+\\.[0-9]+/ ;                    \
 		operator : '+' | '-' | '*' | '/' | '%' ;            \
-		expr     : <number> | '(' <operator> <expr>+ ')' ;  \
+		expr     : <decimal> | <number> | '(' <operator> <expr>+ ')' ;  \
 		lispy    : /^/ <operator> <expr>+ /$/ ;             \
 	  ",
-		Number, Operator, Expr, Lispy);
+		Number, Decimal, Operator, Expr, Lispy);
 
     printf("lispy version: %.2f\n", VERSION);
+    printf("License: GPLv3 (see https://www.gnu.org/licenses/gpl-3.0.txt)\n");
+#ifdef __GNUC__
+    printf("GCC: %d.%d.%d\n", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__);
+#endif
     printf("CTRL-C to exit\n");
 
     while (1) {
@@ -187,6 +272,6 @@ int main(int argc, char** argv) {
     return 0;
 
     /* Undefine and Delete our Parsers */
-    mpc_cleanup(4, Number, Operator, Expr, Lispy);
+    mpc_cleanup(5, Number, Decimal, Operator, Expr, Lispy);
     return 0;
 }
