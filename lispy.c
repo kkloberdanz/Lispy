@@ -221,23 +221,23 @@ lval eval(mpc_ast_t* t) {
 
 int main(int argc, char** argv) {
 
-	/* Create Some Parsers */
-	mpc_parser_t* Number   = mpc_new("number");
-	mpc_parser_t* Decimal  = mpc_new("decimal");
-	mpc_parser_t* Operator = mpc_new("operator");
-	mpc_parser_t* Expr     = mpc_new("expr");
-	mpc_parser_t* Lispy    = mpc_new("lispy");
+    /* Create Some Parsers */
+    mpc_parser_t* Number   = mpc_new("number");
+    mpc_parser_t* Decimal  = mpc_new("decimal");
+    mpc_parser_t* Operator = mpc_new("operator");
+    mpc_parser_t* Expr     = mpc_new("expr");
+    mpc_parser_t* Lispy    = mpc_new("lispy");
 
-	/* Define them with the following Language */
-	mpca_lang(MPCA_LANG_DEFAULT,
-	  "                                                     \
-		number   : /-?[0-9]+/ ;                             \
+    /* Define them with the following Language */
+    mpca_lang(MPCA_LANG_DEFAULT,
+      "                                                     \
+        number   : /-?[0-9]+/ ;                             \
         decimal  : /-?[0-9]+\\.[0-9]+/ ;                    \
-		operator : '+' | '-' | '*' | '/' | '%' ;            \
-		expr     : <decimal> | <number> | '(' <operator> <expr>+ ')' ;  \
-		lispy    : /^/ <operator> <expr>+ /$/ ;             \
-	  ",
-		Number, Decimal, Operator, Expr, Lispy);
+        operator : '+' | '-' | '*' | '/' | '%' ;            \
+        expr     : <decimal> | <number> | '(' <operator> <expr>+ ')' ;  \
+        lispy    : /^/ <operator> <expr>+ /$/ ;             \
+      ",
+        Number, Decimal, Operator, Expr, Lispy);
 
     printf("lispy version: %.2f\n", VERSION);
     printf("License: GPLv3 (see https://www.gnu.org/licenses/gpl-3.0.txt)\n");
